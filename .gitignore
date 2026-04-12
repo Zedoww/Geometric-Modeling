@@ -1,0 +1,8 @@
+# Build artifacts
+TP1/MeshViewerCMake/build/
+
+# OBJ mesh files (data, not source)
+*.obj
+
+# PDF
+*.pdf
