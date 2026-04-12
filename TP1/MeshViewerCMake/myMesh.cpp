@@ -99,10 +99,47 @@ bool myMesh::readFile(std::string filename)
 		}
 		else if (t == "f")
 		{
-			cout << "f";
+			faceids.clear();
 			while (myline >> u)
-				cout << " " << atoi((u.substr(0, u.find("/"))).c_str());
-			cout << endl;
+				faceids.push_back(atoi((u.substr(0, u.find("/"))).c_str()) - 1);
+
+			if (faceids.size() < 3)
+				continue;
+
+			hedges = new myHalfedge *[faceids.size()];
+			for (unsigned int i = 0; i < faceids.size(); i++)
+				hedges[i] = new myHalfedge();
+
+			myFace *f = new myFace();
+			f->adjacent_halfedge = hedges[0];
+
+			for (unsigned int i = 0; i < faceids.size(); i++)
+			{
+				int iplusone = (i + 1) % faceids.size();
+				int iminusone = (i - 1 + faceids.size()) % faceids.size();
+
+				hedges[i]->source = vertices[faceids[i]];
+				hedges[i]->adjacent_face = f;
+				hedges[i]->next = hedges[iplusone];
+				hedges[i]->prev = hedges[iminusone];
+
+				it = twin_map.find(make_pair(faceids[iplusone], faceids[i]));
+				if (it != twin_map.end())
+				{
+					hedges[i]->twin = it->second;
+					it->second->twin = hedges[i];
+				}
+				else
+					twin_map[make_pair(faceids[i], faceids[iplusone])] = hedges[i];
+
+				if (vertices[faceids[i]]->originof == NULL)
+					vertices[faceids[i]]->originof = hedges[i];
+
+				halfedges.push_back(hedges[i]);
+			}
+
+			delete[] hedges;
+			faces.push_back(f);
 		}
 	}
 
@@ -119,6 +156,8 @@ void myMesh::computeNormals()
 
 	for (unsigned int i = 0; i < vertices.size(); i++)
 		vertices[i]->computeNormal();
+
+	
 }
 
 void myMesh::normalize()
@@ -198,7 +237,9 @@ void myMesh::simplify(myVertex *)
 
 void myMesh::triangulate()
 {
-	/**** TODO ****/
+	vector<myFace *> original_faces = faces;
+	for (unsigned int i = 0; i < original_faces.size(); i++)
+		triangulate(original_faces[i]);
 }
 
 // return false if already triangle, true othewise.
