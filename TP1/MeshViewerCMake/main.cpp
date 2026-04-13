@@ -2,6 +2,12 @@
 #include <GL/glew.h>
 #if defined(__APPLE__)
 #include <GLUT/glut.h>
+#undef glGenVertexArrays
+#undef glBindVertexArray
+#undef glDeleteVertexArrays
+#define glGenVertexArrays glGenVertexArraysAPPLE
+#define glBindVertexArray glBindVertexArrayAPPLE
+#define glDeleteVertexArrays glDeleteVertexArraysAPPLE
 #else
 #include <GL/freeglut.h>
 #endif
@@ -233,10 +239,12 @@ void display()
 	{
 		glLineWidth(2.0);
 		color[0] = 0.0f, color[1] = 0.0f, color[2] = 0.0f, color[3] = 1.0f;		
-        glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
+		glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
+		glUniform1i(glGetUniformLocation(shaderprogram, "type"), 1);
 		glBindVertexArray(vaos[VAO_EDGES]);
-		glDrawElements(GL_LINES, m->halfedges.size()*2, GL_UNSIGNED_INT, 0);
+		glDrawArrays(GL_LINES, 0, num_edge_indices);
 		glBindVertexArray(0);
+		glUniform1i(glGetUniformLocation(shaderprogram, "type"), 0);
 	}
 
 	if (drawsilhouette)

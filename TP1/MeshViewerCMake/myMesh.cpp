@@ -242,9 +242,65 @@ void myMesh::triangulate()
 		triangulate(original_faces[i]);
 }
 
-// return false if already triangle, true othewise.
+// return false if already triangle, true otherwise.
 bool myMesh::triangulate(myFace *f)
 {
-	/**** TODO ****/
-	return false;
+	int n = 0;
+	myHalfedge *e = f->adjacent_halfedge;
+	do {
+		n++;
+		e = e->next;
+	} while (e != f->adjacent_halfedge);
+
+	if (n == 3) return false;
+
+	vector<myHalfedge *> old_edges;
+	e = f->adjacent_halfedge;
+	for (int i = 0; i < n; i++)
+	{
+		old_edges.push_back(e);
+		e = e->next;
+	}
+
+	// Fan triangulation from v0: n-2 triangles, n-3 diagonal edges
+	int nd = n - 3;
+	vector<myHalfedge *> diag_in(nd), diag_out(nd);
+	for (int k = 0; k < nd; k++)
+	{
+		diag_in[k] = new myHalfedge();
+		diag_out[k] = new myHalfedge();
+
+		diag_in[k]->source = old_edges[k + 2]->source;
+		diag_out[k]->source = old_edges[0]->source;
+
+		diag_in[k]->twin = diag_out[k];
+		diag_out[k]->twin = diag_in[k];
+
+		halfedges.push_back(diag_in[k]);
+		halfedges.push_back(diag_out[k]);
+	}
+
+	for (int k = 0; k < n - 2; k++)
+	{
+		myFace *nf;
+		if (k == 0)
+			nf = f;
+		else
+		{
+			nf = new myFace();
+			faces.push_back(nf);
+		}
+
+		myHalfedge *e0 = (k == 0)     ? old_edges[0]     : diag_out[k - 1];
+		myHalfedge *e1 = old_edges[k + 1];
+		myHalfedge *e2 = (k == n - 3)  ? old_edges[n - 1] : diag_in[k];
+
+		nf->adjacent_halfedge = e0;
+
+		e0->next = e1;  e0->prev = e2;  e0->adjacent_face = nf;
+		e1->next = e2;  e1->prev = e0;  e1->adjacent_face = nf;
+		e2->next = e0;  e2->prev = e1;  e2->adjacent_face = nf;
+	}
+
+	return true;
 }
