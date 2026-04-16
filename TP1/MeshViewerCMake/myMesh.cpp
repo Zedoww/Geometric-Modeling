@@ -73,7 +73,7 @@ bool myMesh::readFile(std::string filename)
 	while (getline(fin, s))
 	{
 		stringstream myline(s);
-		myline >> t;
+		if (!(myline >> t)) continue;
 		if (t == "g")
 		{
 		}
@@ -156,8 +156,6 @@ void myMesh::computeNormals()
 
 	for (unsigned int i = 0; i < vertices.size(); i++)
 		vertices[i]->computeNormal();
-
-	
 }
 
 void myMesh::normalize()
@@ -248,13 +246,23 @@ bool myMesh::triangulate(myFace *f)
 	const double eps = 1e-10;
 	int n = 0;
 	myHalfedge *e = f->adjacent_halfedge;
-	do { n++; e = e->next; } while (e != f->adjacent_halfedge);
-	if (n == 3) return false;
+	do
+	{
+		n++;
+		e = e->next;
+	} while (e != f->adjacent_halfedge);
+	if (n == 3)
+		return false;
 
 	vector<myHalfedge *> hedges(n);
 	vector<myVertex *> verts(n);
 	e = f->adjacent_halfedge;
-	for (int i = 0; i < n; i++) { hedges[i] = e; verts[i] = e->source; e = e->next; }
+	for (int i = 0; i < n; i++)
+	{
+		hedges[i] = e;
+		verts[i] = e->source;
+		e = e->next;
+	}
 
 	myVector3D faceN(0, 0, 0);
 	for (int i = 0; i < n; i++)
@@ -264,10 +272,15 @@ bool myMesh::triangulate(myFace *f)
 		faceN.dY += (a->Z - b->Z) * (a->X + b->X);
 		faceN.dZ += (a->X - b->X) * (a->Y + b->Y);
 	}
-	if (faceN.length() < eps) return false;
+	if (faceN.length() < eps)
+		return false;
 
 	vector<int> nxt(n), prv(n);
-	for (int i = 0; i < n; i++) { nxt[i] = (i + 1) % n; prv[i] = (i - 1 + n) % n; }
+	for (int i = 0; i < n; i++)
+	{
+		nxt[i] = (i + 1) % n;
+		prv[i] = (i - 1 + n) % n;
+	}
 
 	int remaining = n;
 	int cur = 0;
@@ -291,7 +304,11 @@ bool myMesh::triangulate(myFace *f)
 					myVector3D c0 = (*verts[cur]->point - *verts[p]->point).crossproduct(*verts[test]->point - *verts[p]->point);
 					myVector3D c1 = (*verts[nx]->point - *verts[cur]->point).crossproduct(*verts[test]->point - *verts[cur]->point);
 					myVector3D c2 = (*verts[p]->point - *verts[nx]->point).crossproduct(*verts[test]->point - *verts[nx]->point);
-					if (c0 * faceN > eps && c1 * faceN > eps && c2 * faceN > eps) { isEar = false; break; }
+					if (c0 * faceN > eps && c1 * faceN > eps && c2 * faceN > eps)
+					{
+						isEar = false;
+						break;
+					}
 					test = nxt[test];
 				}
 				if (isEar)
@@ -327,7 +344,8 @@ bool myMesh::triangulate(myFace *f)
 			}
 			cur = nxt[cur];
 		} while (cur != startIdx);
-		if (!found) break;
+		if (!found)
+			break;
 	}
 
 	int i0 = cur;
