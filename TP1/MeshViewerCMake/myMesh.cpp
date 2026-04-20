@@ -73,7 +73,8 @@ bool myMesh::readFile(std::string filename)
 	while (getline(fin, s))
 	{
 		stringstream myline(s);
-		if (!(myline >> t)) continue;
+		if (!(myline >> t))
+			continue;
 		if (t == "g")
 		{
 		}
@@ -231,6 +232,10 @@ void myMesh::simplify()
 void myMesh::simplify(myVertex *)
 {
 	/**** TODO ****/
+}
+
+void myMesh::revolution()
+{
 }
 
 void myMesh::triangulate()

@@ -12,6 +12,8 @@
 #include <GL/freeglut.h>
 #endif
 #include <sstream>
+#include <cstdio>
+#include <array>
 
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
@@ -52,7 +54,8 @@ enum MENU
 	MENU_WRITE,
 	MENU_SIMPLIFY,
 	MENU_DRAWNORMALS,
-	MENU_OPENFILE
+	MENU_OPENFILE,
+	MENU_REVOLUTION
 };
 
 myMesh *m;
@@ -69,6 +72,59 @@ void clear()
 	closest_vertex = NULL;
 	closest_face = NULL;
 	pickedpoint = NULL;
+}
+
+static bool loadMeshFromPath(const std::string &path)
+{
+	if (path.empty())
+		return false;
+
+	myMesh *newMesh = new myMesh();
+	if (!newMesh->readFile(path))
+	{
+		delete newMesh;
+		return false;
+	}
+
+	newMesh->computeNormals();
+	makeBuffers(newMesh);
+
+	if (m != NULL)
+	{
+		m->clear();
+		delete m;
+	}
+	m = newMesh;
+	clear();
+	return true;
+}
+
+static std::string openFileDialog()
+{
+#if defined(__APPLE__)
+	// Ask Finder for a file path and return empty string on cancel/error.
+	const char *cmd =
+		"osascript -e 'try' "
+		"-e 'POSIX path of (choose file with prompt \"Select a mesh (.obj)\" of type {\"obj\"})' "
+		"-e 'on error number -128' "
+		"-e 'return \"\"' "
+		"-e 'end try'";
+	std::array<char, 1024> buffer{};
+	std::string result;
+	FILE *pipe = popen(cmd, "r");
+	if (pipe == NULL)
+		return "";
+
+	while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != NULL)
+		result += buffer.data();
+	pclose(pipe);
+
+	while (!result.empty() && (result.back() == '\n' || result.back() == '\r'))
+		result.pop_back();
+	return result;
+#else
+	return "";
+#endif
 }
 
 void menu(int item)
@@ -201,6 +257,31 @@ void menu(int item)
 	case MENU_SIMPLIFY:
 	{
 		m->simplify();
+		break;
+	}
+
+	case MENU_REVOLUTION:
+	{
+		m->computeNormals();
+		makeBuffers(m);
+		break;
+	}
+
+	case MENU_OPENFILE:
+	{
+		std::string path = openFileDialog();
+		if (path.empty())
+		{
+			std::cout << "No file selected in dialog. Enter mesh file path (.obj): " << std::flush;
+			if (!std::getline(std::cin >> std::ws, path))
+			{
+				std::cin.clear();
+				std::cout << "Failed to read path from input.\n";
+				break;
+			}
+		}
+		if (!loadMeshFromPath(path))
+			std::cout << "Unable to load mesh: " << path << "\n";
 		break;
 	}
 	}
@@ -432,11 +513,8 @@ void initMesh()
 
 	cout << "Reading mesh from file...\n";
 	m = new myMesh();
-	if (m->readFile("c_gear.obj"))
-	{
-		m->computeNormals();
-		makeBuffers(m);
-	}
+	if (!loadMeshFromPath("c_gear.obj"))
+		std::cout << "Unable to load default mesh: c_gear.obj\n";
 }
 
 int main(int argc, char *argv[])
