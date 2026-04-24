@@ -4,6 +4,7 @@
 #include <sstream>
 #include <map>
 #include <utility>
+#include <cmath>
 #include <GL/glew.h>
 #include "myVector3D.h"
 
@@ -236,6 +237,109 @@ void myMesh::simplify(myVertex *)
 
 void myMesh::revolution()
 {
+	// Minimal generation: build a fresh lathe mesh from a fixed profile
+	// revolved around the Y axis (the axis itself is x = z = 0).
+	vector<myPoint3D> profile;
+	profile.push_back(myPoint3D(0.15, -0.60, 0.0));
+	profile.push_back(myPoint3D(0.28, -0.45, 0.0));
+	profile.push_back(myPoint3D(0.24, -0.20, 0.0));
+	profile.push_back(myPoint3D(0.35, 0.00, 0.0));
+	profile.push_back(myPoint3D(0.22, 0.20, 0.0));
+	profile.push_back(myPoint3D(0.30, 0.45, 0.0));
+	profile.push_back(myPoint3D(0.14, 0.60, 0.0));
+
+	clear();
+
+	const int slices = 20;
+	const double two_pi = 6.28318530717958647692;
+	const int profile_count = static_cast<int>(profile.size());
+
+	vector<vector<myVertex *> > grid(slices, vector<myVertex *>(profile_count, NULL));
+	for (int s = 0; s < slices; s++)
+	{
+		double angle = (two_pi * static_cast<double>(s)) / static_cast<double>(slices);
+		double c = cos(angle);
+		double si = sin(angle);
+		for (int i = 0; i < profile_count; i++)
+		{
+			const myPoint3D &p = profile[i];
+			myVertex *v = new myVertex();
+			v->point = new myPoint3D(c * p.X + si * p.Z, p.Y, -si * p.X + c * p.Z);
+			vertices.push_back(v);
+			grid[s][i] = v;
+		}
+	}
+
+	map<pair<myVertex *, myVertex *>, myHalfedge *> twin_map;
+	for (int s = 0; s < slices; s++)
+	{
+		int sn = (s + 1) % slices;
+		for (int i = 0; i < profile_count - 1; i++)
+		{
+			myVertex *v0 = grid[s][i];
+			myVertex *v1 = grid[sn][i];
+			myVertex *v2 = grid[sn][i + 1];
+			myVertex *v3 = grid[s][i + 1];
+
+			myFace *f = new myFace();
+			myHalfedge *e0 = new myHalfedge();
+			myHalfedge *e1 = new myHalfedge();
+			myHalfedge *e2 = new myHalfedge();
+			myHalfedge *e3 = new myHalfedge();
+
+			e0->source = v0;
+			e1->source = v1;
+			e2->source = v2;
+			e3->source = v3;
+
+			e0->adjacent_face = f;
+			e1->adjacent_face = f;
+			e2->adjacent_face = f;
+			e3->adjacent_face = f;
+
+			e0->next = e1;
+			e1->next = e2;
+			e2->next = e3;
+			e3->next = e0;
+
+			e0->prev = e3;
+			e1->prev = e0;
+			e2->prev = e1;
+			e3->prev = e2;
+
+			if (v0->originof == NULL)
+				v0->originof = e0;
+			if (v1->originof == NULL)
+				v1->originof = e1;
+			if (v2->originof == NULL)
+				v2->originof = e2;
+			if (v3->originof == NULL)
+				v3->originof = e3;
+
+			f->adjacent_halfedge = e0;
+			faces.push_back(f);
+			halfedges.push_back(e0);
+			halfedges.push_back(e1);
+			halfedges.push_back(e2);
+			halfedges.push_back(e3);
+
+			myHalfedge *face_edges[4] = {e0, e1, e2, e3};
+			for (int k = 0; k < 4; k++)
+			{
+				myVertex *a = face_edges[k]->source;
+				myVertex *b = face_edges[k]->next->source;
+				pair<myVertex *, myVertex *> rev_key = make_pair(b, a);
+				map<pair<myVertex *, myVertex *>, myHalfedge *>::iterator it = twin_map.find(rev_key);
+				if (it != twin_map.end())
+				{
+					face_edges[k]->twin = it->second;
+					it->second->twin = face_edges[k];
+				}
+				else
+					twin_map[make_pair(a, b)] = face_edges[k];
+			}
+		}
+	}
 }
 
 void myMesh::triangulate()

@@ -262,6 +262,7 @@ void menu(int item)
 
 	case MENU_REVOLUTION:
 	{
+		m->revolution();
 		m->computeNormals();
 		makeBuffers(m);
 		break;
