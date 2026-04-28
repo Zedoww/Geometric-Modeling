@@ -516,16 +516,15 @@ void initMesh()
 
 	cout << "Reading mesh from file...\n";
 	m = new myMesh();
-	if (!loadMeshFromPath("c_gear.obj"))
+	if (!loadMeshFromPath("dolphin.obj"))
 		std::cout << "Unable to load default mesh: c_gear.obj\n";
 }
 
 int main(int argc, char *argv[])
 {
-	
+
 	initInterface(argc, argv);
 	initMesh();
 	glutMainLoop();
 	return 0;
-
 }
