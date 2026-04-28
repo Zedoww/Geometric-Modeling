@@ -5,6 +5,7 @@
 #include <map>
 #include <utility>
 #include <cmath>
+#include <limits>
 #include <GL/glew.h>
 #include "myVector3D.h"
 
@@ -227,26 +228,56 @@ void myMesh::subdivisionCatmullClark()
 
 void myMesh::simplify()
 {
-	/**** TODO ****/
+	if (faces.empty() || halfedges.empty() || vertices.size() < 3)
+		return;
+
+	triangulate();
+
+	myHalfedge *best = NULL;
+	double best_len2 = std::numeric_limits<double>::max();
+
+	for (unsigned int i = 0; i < halfedges.size(); i++)
+	{
+		myHalfedge *e = halfedges[i];
+		if (e == NULL || e->twin == NULL || e->source == NULL || e->twin->source == NULL)
+			continue;
+		if (e > e->twin)
+			continue;
+
+		myPoint3D *p0 = e->source->point;
+		myPoint3D *p1 = e->twin->source->point;
+		double dx = p0->X - p1->X;
+		double dy = p0->Y - p1->Y;
+		double dz = p0->Z - p1->Z;
+		double len2 = dx * dx + dy * dy + dz * dz;
+
+		if (len2 < best_len2)
+		{
+			best_len2 = len2;
+			best = e;
+		}
+	}
+
+	if (best == NULL)
+		return;
+
+	simplify(best->source);
+	
 }
 
 void myMesh::simplify(myVertex *)
 {
-	/**** TODO ****/
+	simplify();
 }
 
 void myMesh::revolution()
 {
-	// Minimal generation: build a fresh lathe mesh from a fixed profile
-	// revolved around the Y axis (the axis itself is x = z = 0).
 	vector<myPoint3D> profile;
-	profile.push_back(myPoint3D(0.15, -0.60, 0.0));
-	profile.push_back(myPoint3D(0.28, -0.45, 0.0));
-	profile.push_back(myPoint3D(0.24, -0.20, 0.0));
+	profile.push_back(myPoint3D(0.15, -0.20, 0.0));
+	profile.push_back(myPoint3D(0.20, -0.25, 0.0));
+	profile.push_back(myPoint3D(0.30, -0.25, 0.0));
 	profile.push_back(myPoint3D(0.35, 0.00, 0.0));
-	profile.push_back(myPoint3D(0.22, 0.20, 0.0));
-	profile.push_back(myPoint3D(0.30, 0.45, 0.0));
-	profile.push_back(myPoint3D(0.14, 0.60, 0.0));
+	profile.push_back(myPoint3D(0.90, 0.0, 0.0));
 
 	clear();
 
@@ -254,7 +285,7 @@ void myMesh::revolution()
 	const double two_pi = 6.28318530717958647692;
 	const int profile_count = static_cast<int>(profile.size());
 
-	vector<vector<myVertex *> > grid(slices, vector<myVertex *>(profile_count, NULL));
+	vector<vector<myVertex *>> grid(slices, vector<myVertex *>(profile_count, NULL));
 	for (int s = 0; s < slices; s++)
 	{
 		double angle = (two_pi * static_cast<double>(s)) / static_cast<double>(slices);

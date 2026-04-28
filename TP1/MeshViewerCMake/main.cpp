@@ -257,6 +257,8 @@ void menu(int item)
 	case MENU_SIMPLIFY:
 	{
 		m->simplify();
+		m->computeNormals();
+		makeBuffers(m);
 		break;
 	}
 
@@ -520,10 +522,10 @@ void initMesh()
 
 int main(int argc, char *argv[])
 {
+	
 	initInterface(argc, argv);
-
 	initMesh();
-
 	glutMainLoop();
 	return 0;
+
 }
