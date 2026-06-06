@@ -25,6 +25,21 @@ set(SOURCE_FILES
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 
+set(MESH_SOURCES
+    myHalfedge.cpp
+    myVector3D.cpp
+    myPoint3D.cpp
+    myFace.cpp
+    myMesh.cpp
+    myVertex.cpp
+)
+add_executable(MeshViewerTests test_mesh.cpp ${MESH_SOURCES})
+target_compile_definitions(MeshViewerTests PRIVATE DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(MeshViewerTests ${OPENGL_LIBRARIES} ${GLEW_LIBRARY})
+
+enable_testing()
+add_test(NAME mesh_tests COMMAND MeshViewerTests)
+
 # macOS: GLUT natif (Cocoa) — pas de X11 / XQuartz. Linux/Windows: FreeGLUT.
 if(APPLE)
     target_link_libraries(${PROJECT_NAME}
