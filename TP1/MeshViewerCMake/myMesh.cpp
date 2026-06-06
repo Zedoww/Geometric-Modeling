@@ -301,7 +301,206 @@ void myMesh::splitFaceQUADS(myFace *f, myPoint3D *p)
 
 void myMesh::subdivisionCatmullClark()
 {
-	/**** TODO ****/
+	if (faces.empty()) return;
+	map<myFace *, myPoint3D *> facePoint;
+	for (unsigned int i = 0; i < faces.size(); i++)
+	{
+		myHalfedge *start = faces[i]->adjacent_halfedge;
+		myPoint3D sum(0, 0, 0);
+		int n = 0;
+		myHalfedge *h = start;
+		do {
+			sum += *(h->source->point);
+			n++;
+			h = h->next;
+		} while (h != start);
+		facePoint[faces[i]] = new myPoint3D(sum.X / n, sum.Y / n, sum.Z / n);
+	}
+	map<myHalfedge *, myPoint3D *> edgePoint;
+	for (unsigned int i = 0; i < halfedges.size(); i++)
+	{
+		myHalfedge *h = halfedges[i];
+		if (edgePoint.count(h)) continue;
+		myPoint3D *a = h->source->point;
+		myPoint3D *b = h->next->source->point;
+		if (h->twin != NULL)
+		{
+			myPoint3D *f1 = facePoint[h->adjacent_face];
+			myPoint3D *f2 = facePoint[h->twin->adjacent_face];
+			edgePoint[h] = new myPoint3D((a->X + b->X + f1->X + f2->X) / 4.0,
+				(a->Y + b->Y + f1->Y + f2->Y) / 4.0,
+				(a->Z + b->Z + f1->Z + f2->Z) / 4.0);
+			edgePoint[h->twin] = edgePoint[h];
+		}
+		else
+		{
+			edgePoint[h] = new myPoint3D((a->X + b->X) / 2.0,
+				(a->Y + b->Y) / 2.0,
+				(a->Z + b->Z) / 2.0);
+		}
+	}
+	map<myVertex *, myPoint3D> faceSum, edgeSum;
+	map<myVertex *, int> valence;
+	map<myVertex *, vector<myVertex *> > voisinsBord;
+	for (unsigned int i = 0; i < vertices.size(); i++)
+	{
+		faceSum[vertices[i]] = myPoint3D(0, 0, 0);
+		edgeSum[vertices[i]] = myPoint3D(0, 0, 0);
+		valence[vertices[i]] = 0;
+		voisinsBord[vertices[i]] = vector<myVertex *>();
+	}
+	for (unsigned int i = 0; i < halfedges.size(); i++)
+	{
+		myHalfedge *h = halfedges[i];
+		if (h->twin == NULL)
+		{
+			myVertex *a = h->source;
+			myVertex *b = h->next->source;
+			voisinsBord[a].push_back(b);
+			voisinsBord[b].push_back(a);
+		}
+	}
+	for (unsigned int i = 0; i < halfedges.size(); i++)
+	{
+		myHalfedge *h = halfedges[i];
+		myVertex *v = h->source;
+		myPoint3D *fp = facePoint[h->adjacent_face];
+		myPoint3D *a = v->point;
+		myPoint3D *b = h->next->source->point;
+		faceSum[v] += *fp;
+		edgeSum[v].X += (a->X + b->X) / 2.0;
+		edgeSum[v].Y += (a->Y + b->Y) / 2.0;
+		edgeSum[v].Z += (a->Z + b->Z) / 2.0;
+		valence[v]++;
+	}
+	map<myVertex *, myPoint3D> newPos;
+	for (unsigned int i = 0; i < vertices.size(); i++)
+	{
+		myVertex *v = vertices[i];
+		if (voisinsBord[v].size() == 2)
+		{
+			myPoint3D *P = v->point;
+			myPoint3D *A = voisinsBord[v][0]->point;
+			myPoint3D *B = voisinsBord[v][1]->point;
+			newPos[v] = myPoint3D(
+				0.75 * P->X + 0.125 * (A->X + B->X),
+				0.75 * P->Y + 0.125 * (A->Y + B->Y),
+				0.75 * P->Z + 0.125 * (A->Z + B->Z)
+			);
+			continue;
+		}
+		else if (voisinsBord[v].size() == 1)
+		{
+			newPos[v] = *(v->point);
+			continue;
+		}
+		int n = valence[v];
+		if (n == 0)
+		{
+			newPos[v] = *(v->point);
+			continue;
+		}
+		myPoint3D F = faceSum[v];
+		myPoint3D R = edgeSum[v];
+		myPoint3D *P = v->point;
+		newPos[v] = myPoint3D((F.X / n + 2.0 * R.X / n + (n - 3.0) * P->X) / n,
+			(F.Y / n + 2.0 * R.Y / n + (n - 3.0) * P->Y) / n,
+			(F.Z / n + 2.0 * R.Z / n + (n - 3.0) * P->Z) / n);
+	}
+	map<myFace *, myVertex *> fvert;
+	map<myHalfedge *, myVertex *> evert;
+	vector<myVertex *> newVertices;
+	vector<myHalfedge *> newHalfedges;
+	vector<myFace *> newFaces;
+	for (unsigned int i = 0; i < vertices.size(); i++)
+	{
+		*(vertices[i]->point) = newPos[vertices[i]];
+		vertices[i]->originof = NULL;
+		newVertices.push_back(vertices[i]);
+	}
+	for (unsigned int i = 0; i < faces.size(); i++)
+	{
+		myVertex *v = new myVertex();
+		v->point = facePoint[faces[i]];
+		fvert[faces[i]] = v;
+		newVertices.push_back(v);
+	}
+	for (unsigned int i = 0; i < halfedges.size(); i++)
+	{
+		myHalfedge *h = halfedges[i];
+		if (evert.count(h)) continue;
+		myVertex *v = new myVertex();
+		v->point = edgePoint[h];
+		evert[h] = v;
+		if (h->twin != NULL) evert[h->twin] = v;
+		newVertices.push_back(v);
+	}
+	for (unsigned int i = 0; i < faces.size(); i++)
+	{
+		myFace *f = faces[i];
+		myVertex *fv = fvert[f];
+		vector<myHalfedge *> loop;
+		myHalfedge *h = f->adjacent_halfedge;
+		do {
+			loop.push_back(h);
+			h = h->next;
+		} while (h != f->adjacent_halfedge);
+		int n = (int)loop.size();
+		for (int k = 0; k < n; k++)
+		{
+			myHalfedge *cur = loop[k];
+			myHalfedge *prevh = loop[(k - 1 + n) % n];
+			myVertex *c0 = cur->source;
+			myVertex *c1 = evert[cur];
+			myVertex *c2 = fv;
+			myVertex *c3 = evert[prevh];
+			myFace *nf = new myFace();
+			newFaces.push_back(nf);
+			myHalfedge *e0 = new myHalfedge();
+			myHalfedge *e1 = new myHalfedge();
+			myHalfedge *e2 = new myHalfedge();
+			myHalfedge *e3 = new myHalfedge();
+			e0->source = c0; e1->source = c1; e2->source = c2; e3->source = c3;
+			e0->next = e1; e1->next = e2; e2->next = e3; e3->next = e0;
+			e0->prev = e3; e1->prev = e0; e2->prev = e1; e3->prev = e2;
+			e0->adjacent_face = nf; e1->adjacent_face = nf;
+			e2->adjacent_face = nf; e3->adjacent_face = nf;
+			nf->adjacent_halfedge = e0;
+			if (c0->originof == NULL) c0->originof = e0;
+			if (c1->originof == NULL) c1->originof = e1;
+			if (c2->originof == NULL) c2->originof = e2;
+			if (c3->originof == NULL) c3->originof = e3;
+			newHalfedges.push_back(e0);
+			newHalfedges.push_back(e1);
+			newHalfedges.push_back(e2);
+			newHalfedges.push_back(e3);
+		}
+	}
+	map<pair<myVertex *, myVertex *>, myHalfedge *> twin_map;
+	for (unsigned int i = 0; i < newHalfedges.size(); i++)
+	{
+		myHalfedge *e = newHalfedges[i];
+		myVertex *src = e->source;
+		myVertex *dst = e->next->source;
+		pair<myVertex *, myVertex *> backward(dst, src);
+		if (twin_map.count(backward))
+		{
+			myHalfedge *tw = twin_map[backward];
+			e->twin = tw;
+			tw->twin = e;
+		}
+		else
+		{
+			twin_map[pair<myVertex *, myVertex *>(src, dst)] = e;
+		}
+	}
+	for (unsigned int i = 0; i < halfedges.size(); i++) delete halfedges[i];
+	for (unsigned int i = 0; i < faces.size(); i++) delete faces[i];
+	vertices = newVertices;
+	halfedges = newHalfedges;
+	faces = newFaces;
+	checkMesh();
+	computeNormals();
 }
 
 void myMesh::simplify()
