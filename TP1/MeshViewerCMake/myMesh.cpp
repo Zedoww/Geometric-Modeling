@@ -44,16 +44,93 @@ void myMesh::clear()
 
 void myMesh::checkMesh()
 {
-	vector<myHalfedge *>::iterator it;
-	for (it = halfedges.begin(); it != halfedges.end(); it++)
+	int err_twin_null = 0;
+	int err_twin_back = 0;
+	int err_twin_self = 0;
+	int err_twin_vert = 0;
+	int err_next_null = 0;
+	int err_next_prev = 0;
+	int err_face_null = 0;
+	int err_face_loop = 0;
+	int err_origin = 0;
+
+	for (unsigned int i = 0; i < halfedges.size(); i++)
 	{
-		if ((*it)->twin == NULL)
-			break;
+		myHalfedge *h = halfedges[i];
+		if (h == NULL)
+			continue;
+
+		if (h->twin == NULL)
+			err_twin_null++;
+		else
+		{
+			if (h->twin == h)
+				err_twin_self++;
+			if (h->twin->twin != h)
+				err_twin_back++;
+			if (h->next != NULL && h->twin->source != h->next->source)
+				err_twin_vert++;
+		}
+
+		if (h->next == NULL || h->prev == NULL)
+			err_next_null++;
+		else
+		{
+			if (h->next->prev != h)
+				err_next_prev++;
+			if (h->prev->next != h)
+				err_next_prev++;
+		}
+
+		if (h->adjacent_face == NULL)
+			err_face_null++;
+		else if (h->next != NULL && h->next->adjacent_face != h->adjacent_face)
+			err_face_loop++;
 	}
-	if (it != halfedges.end())
-		cout << "Error! Not all edges have their twins!\n";
+
+	for (unsigned int i = 0; i < vertices.size(); i++)
+	{
+		myVertex *v = vertices[i];
+		if (v == NULL)
+			continue;
+		if (v->originof == NULL || v->originof->source != v)
+			err_origin++;
+	}
+
+	int total = err_twin_null + err_twin_back + err_twin_self + err_twin_vert +
+				err_next_null + err_next_prev + err_face_null + err_face_loop +
+				err_origin;
+
+	cout << "---- checkMesh ----\n";
+	cout << "vertices: " << vertices.size()
+		 << "  halfedges: " << halfedges.size()
+		 << "  faces: " << faces.size() << "\n";
+	if (err_twin_null)
+		cout << "  halfedges without twin (boundary?): " << err_twin_null << "\n";
+	if (err_twin_self)
+		cout << "  twin == self: " << err_twin_self << "\n";
+	if (err_twin_back)
+		cout << "  twin->twin != self: " << err_twin_back << "\n";
+	if (err_twin_vert)
+		cout << "  twin->source != next->source: " << err_twin_vert << "\n";
+	if (err_next_null)
+		cout << "  missing next/prev pointer: " << err_next_null << "\n";
+	if (err_next_prev)
+		cout << "  next/prev not reciprocal: " << err_next_prev << "\n";
+	if (err_face_null)
+		cout << "  halfedge without adjacent face: " << err_face_null << "\n";
+	if (err_face_loop)
+		cout << "  face loop has inconsistent adjacent_face: " << err_face_loop << "\n";
+	if (err_origin)
+		cout << "  vertex originof inconsistent: " << err_origin << "\n";
+
+	if (total == 0 && err_twin_null == 0)
+		cout << "  OK: all half-edge invariants hold.\n";
+	else if (total - err_twin_null == 0)
+		cout << "  OK (open mesh): only boundary edges lack a twin.\n";
 	else
-		cout << "Each edge has a twin!\n";
+		cout << "  FAILED: " << (total - err_twin_null) << " violation(s).\n";
+	cout << "-------------------\n";
 }
 
 bool myMesh::readFile(std::string filename)
