@@ -508,192 +508,181 @@ void myMesh::simplify()
 	if (faces.empty() || halfedges.empty() || vertices.size() < 3)
 		return;
 
+	int V = static_cast<int>(vertices.size());
+	for (int i = 0; i < V; i++)
+		vertices[i]->index = i;
+
+	vector<myPoint3D> pos;
+	pos.reserve(V);
+	for (int i = 0; i < V; i++)
+		pos.push_back(myPoint3D(vertices[i]->point->X, vertices[i]->point->Y, vertices[i]->point->Z));
+
+	vector<int> tris;
+	for (unsigned int fi = 0; fi < faces.size(); fi++)
+	{
+		myFace *f = faces[fi];
+		if (f == NULL || f->adjacent_halfedge == NULL)
+			continue;
+		myHalfedge *h0 = f->adjacent_halfedge;
+		myHalfedge *h = h0->next;
+		while (h != NULL && h->next != h0 && h->next != NULL)
+		{
+			tris.push_back(h0->source->index);
+			tris.push_back(h->source->index);
+			tris.push_back(h->next->source->index);
+			h = h->next;
+		}
+	}
+	if (tris.empty())
+		return;
+
+	vector<int> parent(V);
+	for (int i = 0; i < V; i++)
+		parent[i] = i;
+	struct UF
+	{
+		static int find(vector<int> &p, int x)
+		{
+			int root = x;
+			while (p[root] != root)
+				root = p[root];
+			while (p[x] != root)
+			{
+				int nx = p[x];
+				p[x] = root;
+				x = nx;
+			}
+			return root;
+		}
+	};
+
 	int collapse_count = static_cast<int>(faces.size() * 0.1);
 	if (collapse_count < 1)
 		collapse_count = 1;
 
+	int ntris = static_cast<int>(tris.size()) / 3;
 	for (int iter = 0; iter < collapse_count; iter++)
 	{
-		// 1) pick shortest edge
-		myHalfedge *best = NULL;
 		double best_len2 = std::numeric_limits<double>::max();
-		for (unsigned int i = 0; i < halfedges.size(); i++)
+		int best_a = -1, best_b = -1;
+		for (int t = 0; t < ntris; t++)
 		{
-			myHalfedge *e = halfedges[i];
-			if (e == NULL || e->twin == NULL || e->source == NULL || e->twin->source == NULL)
+			int r[3] = {
+				UF::find(parent, tris[3 * t + 0]),
+				UF::find(parent, tris[3 * t + 1]),
+				UF::find(parent, tris[3 * t + 2])};
+			if (r[0] == r[1] && r[1] == r[2])
 				continue;
-			if (e > e->twin)
-				continue; // one representative per undirected edge
-
-			myPoint3D *p0 = e->source->point;
-			myPoint3D *p1 = e->twin->source->point;
-			double dx = p0->X - p1->X;
-			double dy = p0->Y - p1->Y;
-			double dz = p0->Z - p1->Z;
-			double len2 = dx * dx + dy * dy + dz * dz;
-			if (len2 < best_len2)
-			{
-				best_len2 = len2;
-				best = e;
-			}
-		}
-
-		if (best == NULL || best->twin == NULL || best->source == NULL || best->twin->source == NULL)
-			break;
-
-		// 2) collapse it (simple version: rebuild the mesh from triangles)
-		myVertex *keep = best->source;
-		myVertex *remove = best->twin->source;
-		if (keep == NULL || remove == NULL || keep == remove)
-			break;
-
-		myPoint3D keepPos(
-			(keep->point->X + remove->point->X) * 0.5,
-			(keep->point->Y + remove->point->Y) * 0.5,
-			(keep->point->Z + remove->point->Z) * 0.5);
-
-		struct Tri
-		{
-			myVertex *v[3];
-		};
-
-		vector<Tri> input_tris;
-		input_tris.reserve(faces.size());
-		for (unsigned int fi = 0; fi < faces.size(); fi++)
-		{
-			myFace *f = faces[fi];
-			if (f == NULL || f->adjacent_halfedge == NULL)
-				continue;
-
-			myHalfedge *h0 = f->adjacent_halfedge;
-			myHalfedge *h1 = h0->next;
-			myHalfedge *h2 = (h1 ? h1->next : NULL);
-			if (h0 == NULL || h1 == NULL || h2 == NULL)
-				continue;
-
-			Tri t;
-			t.v[0] = h0->source;
-			t.v[1] = h1->source;
-			t.v[2] = h2->source;
-			input_tris.push_back(t);
-		}
-
-		vector<Tri> output_tris;
-		output_tris.reserve(input_tris.size());
-		for (unsigned int ti = 0; ti < input_tris.size(); ti++)
-		{
-			myVertex *a = input_tris[ti].v[0];
-			myVertex *b = input_tris[ti].v[1];
-			myVertex *c = input_tris[ti].v[2];
-
-			if (a == remove)
-				a = keep;
-			if (b == remove)
-				b = keep;
-			if (c == remove)
-				c = keep;
-
-			if (a == b || b == c || c == a)
-				continue;
-
-			Tri t;
-			t.v[0] = a;
-			t.v[1] = b;
-			t.v[2] = c;
-			output_tris.push_back(t);
-		}
-
-		if (output_tris.empty())
-			break;
-
-		set<myVertex *> used_old_vertices;
-		for (unsigned int ti = 0; ti < output_tris.size(); ti++)
-		{
-			used_old_vertices.insert(output_tris[ti].v[0]);
-			used_old_vertices.insert(output_tris[ti].v[1]);
-			used_old_vertices.insert(output_tris[ti].v[2]);
-		}
-
-		map<myVertex *, myVertex *> old_to_new;
-		for (set<myVertex *>::iterator it = used_old_vertices.begin(); it != used_old_vertices.end(); ++it)
-		{
-			myVertex *ov = *it;
-			myVertex *nv = new myVertex();
-			if (ov == keep)
-				nv->point = new myPoint3D(keepPos.X, keepPos.Y, keepPos.Z);
-			else
-				nv->point = new myPoint3D(ov->point->X, ov->point->Y, ov->point->Z);
-			old_to_new[ov] = nv;
-		}
-
-		clear();
-		map<pair<myVertex *, myVertex *>, myHalfedge *> twin_map;
-
-		for (unsigned int ti = 0; ti < output_tris.size(); ti++)
-		{
-			myVertex *v0 = old_to_new[output_tris[ti].v[0]];
-			myVertex *v1 = old_to_new[output_tris[ti].v[1]];
-			myVertex *v2 = old_to_new[output_tris[ti].v[2]];
-			if (v0 == NULL || v1 == NULL || v2 == NULL)
-				continue;
-
-			myFace *f = new myFace();
-			myHalfedge *e0 = new myHalfedge();
-			myHalfedge *e1 = new myHalfedge();
-			myHalfedge *e2 = new myHalfedge();
-
-			e0->source = v0;
-			e1->source = v1;
-			e2->source = v2;
-			e0->adjacent_face = f;
-			e1->adjacent_face = f;
-			e2->adjacent_face = f;
-			e0->next = e1;
-			e1->next = e2;
-			e2->next = e0;
-			e0->prev = e2;
-			e1->prev = e0;
-			e2->prev = e1;
-			f->adjacent_halfedge = e0;
-
-			if (v0->originof == NULL)
-				v0->originof = e0;
-			if (v1->originof == NULL)
-				v1->originof = e1;
-			if (v2->originof == NULL)
-				v2->originof = e2;
-
-			halfedges.push_back(e0);
-			halfedges.push_back(e1);
-			halfedges.push_back(e2);
-			faces.push_back(f);
-
-			myHalfedge *local[3];
-			local[0] = e0;
-			local[1] = e1;
-			local[2] = e2;
 			for (int k = 0; k < 3; k++)
 			{
-				myVertex *a = local[k]->source;
-				myVertex *b = local[k]->next->source;
-				pair<myVertex *, myVertex *> rev = make_pair(b, a);
-				map<pair<myVertex *, myVertex *>, myHalfedge *>::iterator it = twin_map.find(rev);
-				if (it != twin_map.end())
+				int a = r[k];
+				int b = r[(k + 1) % 3];
+				if (a == b)
+					continue;
+				double dx = pos[a].X - pos[b].X;
+				double dy = pos[a].Y - pos[b].Y;
+				double dz = pos[a].Z - pos[b].Z;
+				double len2 = dx * dx + dy * dy + dz * dz;
+				if (len2 < best_len2)
 				{
-					local[k]->twin = it->second;
-					it->second->twin = local[k];
+					best_len2 = len2;
+					best_a = a;
+					best_b = b;
 				}
-				else
-					twin_map[make_pair(a, b)] = local[k];
 			}
 		}
 
-		for (map<myVertex *, myVertex *>::iterator it = old_to_new.begin(); it != old_to_new.end(); ++it)
-			vertices.push_back(it->second);
-
-		if (faces.empty() || vertices.size() < 3 || halfedges.empty())
+		if (best_a < 0 || best_b < 0)
 			break;
+
+		pos[best_a] = myPoint3D(
+			(pos[best_a].X + pos[best_b].X) * 0.5,
+			(pos[best_a].Y + pos[best_b].Y) * 0.5,
+			(pos[best_a].Z + pos[best_b].Z) * 0.5);
+		parent[best_b] = best_a;
 	}
+
+	vector<int> outTris;
+	outTris.reserve(tris.size());
+	map<int, int> rootToNew;
+	vector<myPoint3D> outPos;
+	for (int t = 0; t < ntris; t++)
+	{
+		int r0 = UF::find(parent, tris[3 * t + 0]);
+		int r1 = UF::find(parent, tris[3 * t + 1]);
+		int r2 = UF::find(parent, tris[3 * t + 2]);
+		if (r0 == r1 || r1 == r2 || r2 == r0)
+			continue;
+
+		int idx[3] = {r0, r1, r2};
+		for (int k = 0; k < 3; k++)
+		{
+			map<int, int>::iterator it = rootToNew.find(idx[k]);
+			int nid;
+			if (it == rootToNew.end())
+			{
+				nid = static_cast<int>(outPos.size());
+				rootToNew[idx[k]] = nid;
+				outPos.push_back(pos[idx[k]]);
+			}
+			else
+				nid = it->second;
+			outTris.push_back(nid);
+		}
+	}
+
+	if (outTris.empty() || outPos.size() < 3)
+		return;
+
+	clear();
+
+	vector<myVertex *> nv(outPos.size(), NULL);
+	for (unsigned int i = 0; i < outPos.size(); i++)
+	{
+		myVertex *v = new myVertex();
+		v->point = new myPoint3D(outPos[i].X, outPos[i].Y, outPos[i].Z);
+		nv[i] = v;
+		vertices.push_back(v);
+	}
+
+	map<pair<int, int>, myHalfedge *> twin_map;
+	for (unsigned int t = 0; t + 2 < outTris.size(); t += 3)
+	{
+		int id[3] = {outTris[t], outTris[t + 1], outTris[t + 2]};
+		myFace *f = new myFace();
+		myHalfedge *e[3];
+		for (int k = 0; k < 3; k++)
+			e[k] = new myHalfedge();
+		for (int k = 0; k < 3; k++)
+		{
+			e[k]->source = nv[id[k]];
+			e[k]->adjacent_face = f;
+			e[k]->next = e[(k + 1) % 3];
+			e[k]->prev = e[(k + 2) % 3];
+			if (nv[id[k]]->originof == NULL)
+				nv[id[k]]->originof = e[k];
+			halfedges.push_back(e[k]);
+		}
+		f->adjacent_halfedge = e[0];
+		faces.push_back(f);
+
+		for (int k = 0; k < 3; k++)
+		{
+			int a = id[k];
+			int b = id[(k + 1) % 3];
+			map<pair<int, int>, myHalfedge *>::iterator it = twin_map.find(make_pair(b, a));
+			if (it != twin_map.end())
+			{
+				e[k]->twin = it->second;
+				it->second->twin = e[k];
+			}
+			else
+				twin_map[make_pair(a, b)] = e[k];
+		}
+	}
+
+	checkMesh();
+	computeNormals();
 }
 
 void myMesh::simplify(myVertex *)
