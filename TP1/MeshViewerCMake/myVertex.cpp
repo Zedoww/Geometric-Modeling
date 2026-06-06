@@ -17,17 +17,32 @@ myVertex::~myVertex(void)
 
 void myVertex::computeNormal()
 {
-	myHalfedge *h = originof;
-	myVector3D v1, v2;
-	v1.dX = h->source->point->X - h->next->source->point->X;
-	v1.dY = h->source->point->Y - h->next->source->point->Y;
-	v1.dZ = h->source->point->Z - h->next->source->point->Z;
+	myVector3D sum(0.0, 0.0, 0.0);
+	myHalfedge *start = originof;
+	bool boundary = false;
 
-	h = h->next;
-	v2.dX = h->source->point->X - h->next->source->point->X;
-	v2.dY = h->source->point->Y - h->next->source->point->Y;
-	v2.dZ = h->source->point->Z - h->next->source->point->Z;
+	myHalfedge *h = start;
+	do
+	{
+		if (h->adjacent_face != NULL && h->adjacent_face->normal != NULL)
+			sum += *h->adjacent_face->normal;
+		if (h->twin == NULL) { boundary = true; break; }
+		h = h->twin->next;
+	} while (h != NULL && h != start);
 
-	normal->crossproduct(v1, v2);
-	normal->normalize();
+	if (boundary && start->prev != NULL)
+	{
+		h = start->prev->twin;
+		while (h != NULL && h != start)
+		{
+			if (h->adjacent_face != NULL && h->adjacent_face->normal != NULL)
+				sum += *h->adjacent_face->normal;
+			if (h->prev == NULL) break;
+			h = h->prev->twin;
+		}
+	}
+
+	*normal = sum;
+	if (normal->length() > 1e-12)
+		normal->normalize();
 }
