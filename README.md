@@ -1,70 +1,192 @@
-# Modélisation Géométrique
+# Geometric Modeling — Mesh Viewer (TP1)
 
-Projet de visualisation et de manipulation de maillages reposant sur une structure de
-données en demi-arêtes (half-edge). Le code se trouve dans `TP1/MeshViewerCMake/`.
+Visualiseur de maillages basé sur une structure de données **half-edge**, écrit en C++ /
+OpenGL. Le projet permet de charger des fichiers `.obj`, de les afficher de différentes
+manières (mesh, fil de fer, normales, silhouette) et d'appliquer plusieurs opérations
+géométriques (triangulation, surface de révolution, simplification…).
 
-## Compilation et exécution
+> Le menu principal s'ouvre par un **clic droit** dans la fenêtre. Les compteurs
+> *Vertices / Halfedges / Faces* affichés en bas à gauche permettent de vérifier l'effet
+> de chaque opération.
+
+---
+
+## Compilation & exécution
 
 ```bash
 cd TP1/MeshViewerCMake
 cmake -S . -B build
 cmake --build build
-./build/MeshViewer
+cd build && ./MeshViewer
 ```
 
-Un clic droit dans la fenêtre ouvre le menu : triangulation, Catmull-Clark,
-simplification, révolution, affichage des normales et de la silhouette, ouverture d'un
-fichier `.obj`, etc.
+Dépendances : **OpenGL**, **GLEW**, **GLM**, **GLUT**.
+Sous macOS (Homebrew) : `brew install glew glm`. Sous Linux/Windows : `freeglut` en plus.
 
-## Travail réalisé
+---
 
-- **readFile** : lecture des fichiers `.obj` et construction de la structure en
-  demi-arêtes (sommets, demi-arêtes, faces, et appariement des twins).
-- **Normales** : normale par face à partir du produit vectoriel, et normale par sommet
-  obtenue en moyennant les normales des faces adjacentes, en tenant compte des bords.
-- **Silhouette** : une arête appartient à la silhouette lorsque l'une de ses faces est
-  orientée vers la caméra et l'autre à l'opposé, détecté par le changement de signe du
-  produit scalaire entre la direction de vue et les normales.
-- **Triangulation** : algorithme d'ear clipping, fonctionnant aussi bien sur les faces
-  convexes que concaves. Les polygones à trous (variante optionnelle) n'ont pas été traités.
-- **Tests de la structure** : `checkMesh()` vérifie les principaux invariants — twins,
-  cohérence des liens next/prev, faces, et champ `originof` des sommets.
-- **Surface de révolution** : génération d'un maillage par rotation d'un profil autour
-  d'un axe, avec reconstruction de la structure en demi-arêtes.
-- **Simplification** : réduction du maillage par effondrement (edge collapse) des arêtes
-  les plus courtes.
-- **Subdivision de Catmull-Clark** : calcul des points de face et d'arête, repositionnement
-  des sommets (règle intérieure et règle de bord), puis reconstruction en quadrilatères.
+## État des objectifs
 
-Une petite suite de tests accompagne le projet :
+| Objectif | État | Capture |
+|---|---|---|
+| `readFile` (chargement `.obj`) | ✅ Fait | ✔ |
+| `computeNormals` | ✅ Fait | ✔ |
+| Silhouette | ✅ Fait | ✔ |
+| Triangulation — faces **convexes** | ✅ Fait | ✔ |
+| Triangulation — faces **concaves** | ✅ Fait (*ear clipping*) | ✔ |
+| Triangulation — polygones à **trous** (expert, optionnel) | ❌ Non traité | — |
+| Tests de la structure half-edge | ✅ Fait (`checkMesh`) | — |
+| Surface de révolution | ✅ Fait | ✔ |
+| Simplification (*shortest edge collapse*) | ✅ Fait | ✔ |
+| Subdivision Catmull-Clark | ✅ Fait | ✔ |
+
+---
+
+## Détail des méthodes
+
+### `readFile` — chargement d'un maillage `.obj`
+
+Lecture ligne par ligne du fichier : les sommets (`v`) deviennent des `myVertex`, et chaque
+face (`f`) crée ses demi-arêtes. Les **twins** sont reconstruits à la volée grâce à une
+`map<pair<int,int>, myHalfedge*>` : quand l'arête `(b, a)` existe déjà, on la relie à `(a, b)`.
+Le maillage est ensuite recentré et mis à l'échelle par `normalize()`.
+
+Le chargement se fait au démarrage (`apple.obj`) ou via le menu **Open File**.
+
+![readFile](docs/images/readfile.png)
+
+---
+
+### `computeNormals`
+
+Calcule d'abord la normale de chaque face, puis la normale de chaque sommet (moyenne des
+faces adjacentes parcourues via la structure half-edge). Les normales par sommet servent au
+*smooth shading*, celles par face au *flat shading*.
+
+Ci-dessous : ombrage lissé + affichage des normales par sommet (menu **Normals**).
+
+![computeNormals](docs/images/compute-normals.png)
+
+---
+
+### Silhouette
+
+Une arête est une arête de silhouette si elle sépare une face tournée **vers** la caméra
+d'une face tournée **dos** à la caméra. On le détecte en comparant le signe du produit
+scalaire entre la direction caméra→arête et les normales des deux faces adjacentes
+(`res1 < 0 != res2 < 0`). Les arêtes trouvées sont tracées en rouge.
+
+![Silhouette](docs/images/silhouette.png)
+
+---
+
+### Triangulation (*ear clipping*)
+
+Algorithme de découpage d'oreilles, robuste aux faces **convexes comme concaves**. La normale
+de la face est calculée par la formule de Newell, ce qui rend le test « l'oreille est-elle
+convexe ? » et « contient-elle un autre sommet ? » valides en 3D quelle que soit l'orientation.
+
+**Faces convexes** — un octogone découpé en triangles :
+
+| Avant | Après |
+|---|---|
+| ![octogone](docs/images/triangulation-convex-before.png) | ![octogone triangulé](docs/images/triangulation-convex-after.png) |
+
+**Faces concaves** — *ear clipping* qui évite les oreilles non valides :
+
+| Avant | Après |
+|---|---|
+| ![concave](docs/images/triangulation-concave-before.png) | ![concave triangulé](docs/images/triangulation-concave-after.png) |
+
+> Le cas **expert** (polygones avec trous) n'a pas été traité — il était optionnel.
+
+---
+
+### Tests de la structure half-edge
+
+`checkMesh()` vérifie les principaux invariants de la structure à chaque chargement et après
+les opérations : présence du **twin** (`twin->twin == h`, `twin != h`, `twin->source ==
+next->source`), réciprocité des liens **next/prev**, cohérence de l'**adjacent_face** le long
+de chaque boucle de face, et validité du champ **originof** des sommets. Le bilan est affiché
+en console, en distinguant un maillage fermé valide d'un maillage ouvert (où seules les arêtes
+de bord n'ont pas de twin).
+
+Une petite suite de tests automatisés accompagne le projet :
 
 ```bash
 cmake --build build --target MeshViewerTests
 ./build/MeshViewerTests
 ```
 
-## Compatibilité macOS
+---
 
-Je développe à la fois sur MacBook M1 et sur Windows, et j'ai choisi de travailler
-principalement sous macOS. Le code de base étant prévu pour Windows et FreeGLUT, j'ai
-rencontré quelques problèmes de compatibilité avec OpenGL. Je me suis appuyé sur une IA
-pour les diagnostiquer et les corriger ; il s'agissait essentiellement de trois points :
+### Surface de révolution
 
-- Sous macOS, il faut utiliser le GLUT natif (`<GLUT/glut.h>`) plutôt que FreeGLUT, et les
-  Vertex Array Objects n'y sont exposés que sous leur nom suffixé `*APPLE`
-  (`glGenVertexArraysAPPLE`, etc.). D'où le bloc `#if defined(__APPLE__)` en tête de
-  `main.cpp`, qui bascule vers FreeGLUT sur les autres systèmes.
-- Côté CMake, il a fallu pointer vers Homebrew (`/opt/homebrew`) pour GLEW et lier le
-  framework natif via `-framework GLUT`, tout en conservant FreeGLUT pour Windows.
-- L'ouverture d'un fichier passe par un appel AppleScript (`osascript`) afin d'utiliser le
-  sélecteur de fichiers natif du système.
+`revolution()` génère un maillage en faisant tourner un profil 2D autour de l'axe Y
+(20 tranches). Chaque couple (tranche, segment de profil) produit une face quadrilatère, et les
+twins sont reliés via la même technique de `map` que `readFile`.
 
-Ces ajustements ne concernent que la portabilité : ils ne modifient pas les algorithmes et
-permettent d'exécuter le même code sur les deux systèmes.
+![Révolution](docs/images/revolution.png)
 
-## Utilisation de l'IA
+---
 
-Pour la partie algorithmique, j'ai utilisé l'IA comme un outil d'accompagnement, à la
-manière d'un professeur particulier : comprendre le fonctionnement de certains algorithmes
-(Catmull-Clark, ear clipping, edge collapse), clarifier des points théoriques et vérifier
-ma compréhension. L'implémentation des exercices reste mon travail.
+### Simplification — *shortest edge collapse*
+
+À chaque itération on cherche **l'arête la plus courte**, on fusionne ses deux sommets en leur
+milieu, puis on reconstruit proprement le maillage (faces dégénérées supprimées, twins
+recalculés). Le menu **Simplification** réduit le maillage d'environ 10 % de ses faces par appel.
+
+Exemple sur `gear.obj` (triangulé) après plusieurs passes — les compteurs en bas à gauche
+montrent la diminution du nombre de faces :
+
+| Avant | Après |
+|---|---|
+| ![gear](docs/images/simplify-before.png) | ![gear simplifié](docs/images/simplify-after.png) |
+
+---
+
+### Subdivision Catmull-Clark
+
+`subdivisionCatmullClark()` raffine le maillage en suivant les trois règles classiques :
+
+- **Face point** : barycentre des sommets de chaque face.
+- **Edge point** : moyenne des deux extrémités de l'arête et des deux face points voisins
+  (milieu de l'arête sur les bords).
+- **Vertex point** : nouvelle position de chaque sommet d'origine,
+  `(F + 2R + (n-3)P) / n`, où `F` est la moyenne des face points adjacents, `R` la moyenne
+  des milieux d'arêtes incidentes, `P` l'ancienne position et `n` la valence (règle de bord
+  dédiée pour les maillages ouverts).
+
+Chaque face d'origine est remplacée par un quad par sommet, reliant *vertex point → edge point
+→ face point → edge point précédent*. Chaque appel quadruple le nombre de faces. Sur un cube,
+le maillage converge vers une surface lisse (6 → 24 → 96 → 384 faces) :
+
+| Cube (départ) | 1 itération | 2 itérations | 3 itérations (lissé) |
+|---|---|---|---|
+| ![cc0](docs/images/catmullclark-0.png) | ![cc1](docs/images/catmullclark-1.png) | ![cc2](docs/images/catmullclark-2.png) | ![cc3](docs/images/catmullclark-3.png) |
+
+---
+
+## Note sur l'utilisation de l'IA
+
+Je développe sur **MacBook M1** et sur **Windows**. J'ai dû faire des choix de portabilité, et
+j'ai choisi de travailler principalement sur **macOS**.
+
+Le principal point de friction a été **OpenGL / GLUT sous macOS**, où j'ai rencontré quelques
+bugs de compatibilité (2-3). L'IA m'a aidé à les corriger :
+
+- **VAO sous macOS** : sur le profil de compatibilité Apple, `glGenVertexArrays` /
+  `glBindVertexArray` / `glDeleteVertexArrays` ne sont pas disponibles tels quels. Il a fallu
+  les rediriger vers leurs variantes `…APPLE` (voir le bloc `#if defined(__APPLE__)` en tête de
+  `main.cpp`).
+- **GLUT natif vs FreeGLUT** : sous macOS on lie le *framework* `GLUT` (Cocoa, sans X11), alors
+  que sous Linux/Windows on utilise `freeglut`. Cette séparation est gérée dans le
+  `CMakeLists.txt` (`if(APPLE) … else() …`).
+- **GLEW via Homebrew** : chemins d'include et de lib pointés vers `/opt/homebrew`.
+- **Boîte de dialogue d'ouverture de fichier** : sous macOS, `openFileDialog()` utilise
+  `osascript` (AppleScript) pour afficher un sélecteur de fichiers natif.
+
+Pour **le reste des exercices** (algorithmes de modélisation géométrique : half-edge,
+*ear clipping*, révolution, simplification…), je me suis servi de l'IA **comme un outil et un
+compagnon de travail**, à la manière d'un professeur particulier : pour **comprendre** les
+algorithmes et leur logique. L'implémentation et les choix restent les miens.
