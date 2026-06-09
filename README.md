@@ -165,6 +165,11 @@ le maillage converge vers une surface lisse (6 → 24 → 96 → 384 faces) :
 |---|---|---|---|
 | ![cc0](docs/images/catmullclark-0.png) | ![cc1](docs/images/catmullclark-1.png) | ![cc2](docs/images/catmullclark-2.png) | ![cc3](docs/images/catmullclark-3.png) |
 
+Le fil de fer de la résolution la plus fine (3 itérations, 384 faces, 386 sommets) confirme que
+la topologie est régulière : une grille de quadrilatères propre, sans face dégénérée.
+
+![cc3 wireframe](docs/images/catmullclark-3-wireframe.png)
+
 ---
 
 ## Note sur l'utilisation de l'IA
